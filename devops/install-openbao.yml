@@ -1,12 +1,14 @@
 ---
-- name: Install OpenBao
+- name: Install and Configure OpenBao
   hosts: target_vm
   become: yes
 
   vars:
     _openbao_deb_url: "https://github.com/openbao/openbao/releases/download/v{{ openbao_version }}/openbao_{{ openbao_version }}_linux_amd64.deb"
+    _storage_path: "/opt/openbao/data"
 
   tasks:
+    # ── Install ────────────────────────────────────────────────────────
     - name: Check if OpenBao is already installed
       command: bao version
       register: bao_check
@@ -31,55 +33,157 @@
         path: "/tmp/openbao_{{ openbao_version }}_linux_amd64.deb"
         state: absent
 
-    - name: Create OpenBao configuration
+    # ── Configure ──────────────────────────────────────────────────────
+    - name: Create openbao system user
+      user:
+        name: openbao
+        system: yes
+        shell: /usr/sbin/nologin
+        home: /opt/openbao
+        create_home: no
+      register: openbao_user
+
+    - name: Create storage directory
+      file:
+        path: "{{ _storage_path }}"
+        state: directory
+        owner: openbao
+        group: openbao
+        mode: "0750"
+
+    - name: Create config directory
+      file:
+        path: /etc/openbao
+        state: directory
+        owner: openbao
+        group: openbao
+        mode: "0750"
+
+    - name: Write OpenBao server configuration
       copy:
         dest: /etc/openbao/config.hcl
         content: |
-          ui = {{ openbao_ui_enabled }}
+          # OpenBao dev server with persistent file storage
+          # Managed by MakeVMs — edit freely, service restart applies changes
+
+          ui = true
 
           listener "tcp" {
             address     = "{{ openbao_listen_address }}"
-            tls_disable = {{ openbao_tls_disable }}
+            tls_disable = true
           }
 
           storage "file" {
-            path = "{{ openbao_storage_path }}"
+            path = "{{ _storage_path }}"
           }
 
-          api_addr = "{{ openbao_api_addr }}"
+          # Dev mode root token (change in production)
+          # The server starts unsealed with this token
+          disable_mlock = true
+
+          api_addr = "http://{{ openbao_listen_address }}"
         owner: openbao
         group: openbao
         mode: "0640"
       notify: Restart OpenBao
 
-    - name: Create storage directory
+    # ── Systemd service ───────────────────────────────────────────────
+    - name: Check if .deb provided a service file
+      stat:
+        path: /usr/lib/systemd/system/openbao.service
+      register: deb_service
+
+    - name: Create systemd service
+      copy:
+        dest: /etc/systemd/system/openbao.service
+        content: |
+          [Unit]
+          Description=OpenBao Secret Management
+          Documentation=https://openbao.org/docs/
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          User=openbao
+          Group=openbao
+          ExecStart=/usr/bin/bao server -dev -dev-root-token-id={{ openbao_root_token }} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
+          ExecReload=/bin/kill --signal HUP $MAINPID
+          Restart=on-failure
+          RestartSec=5
+          LimitNOFILE=65536
+          LimitMEMLOCK=infinity
+          Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
+          Environment=HOME=/opt/openbao
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+      when: not deb_service.stat.exists
+      notify: Reload and Restart OpenBao
+
+    - name: Override .deb service for dev mode
+      copy:
+        dest: /etc/systemd/system/openbao.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/bao server -dev -dev-root-token-id={{ openbao_root_token }} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
+          Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
+          Environment=HOME=/opt/openbao
+        mode: "0644"
+      when: deb_service.stat.exists
+      notify: Reload and Restart OpenBao
+
+    - name: Ensure override directory exists
       file:
-        path: "{{ openbao_storage_path }}"
+        path: /etc/systemd/system/openbao.service.d
         state: directory
-        owner: openbao
-        group: openbao
-        mode: "0750"
+        mode: "0755"
+      when: deb_service.stat.exists
 
     - name: Enable and start OpenBao
       systemd:
         name: openbao
         enabled: yes
         state: started
+        daemon_reload: yes
 
-    - name: Verify installation
+    # ── Verify ─────────────────────────────────────────────────────────
+    - name: Wait for OpenBao to be ready
+      uri:
+        url: "http://127.0.0.1:{{ openbao_listen_address.split(':')[1] | default('8200') }}/v1/sys/health"
+        status_code: [200, 429, 472, 473, 501, 503]
+      register: health
+      retries: 10
+      delay: 2
+      until: health.status is defined
+
+    - name: Get version
       command: bao version
       register: bao_version
       changed_when: false
 
     - name: Display status
       debug:
-        msg: >
-          {{ bao_version.stdout }} installed.
-          Access at {{ openbao_api_addr }}.
-          Initialize with: bao operator init
+        msg: |
+          {{ bao_version.stdout }}
+          UI:         http://{{ openbao_listen_address }}
+          Root Token: {{ openbao_root_token }}
+          Status:     Dev mode with persistent storage at {{ _storage_path }}
+
+          To use the CLI:
+            export BAO_ADDR=http://{{ openbao_listen_address }}
+            export BAO_TOKEN={{ openbao_root_token }}
+            bao status
 
   handlers:
     - name: Restart OpenBao
       systemd:
         name: openbao
+        state: restarted
+
+    - name: Reload and Restart OpenBao
+      systemd:
+        name: openbao
+        daemon_reload: yes
         state: restarted

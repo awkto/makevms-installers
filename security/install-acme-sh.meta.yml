@@ -1,12 +1,22 @@
-name: "Install acme.sh"
-description: "Install acme.sh and issue SSL/TLS certificates via ACME protocol"
+name: "Issue SSL Certificate"
+description: "Install acme.sh and issue Let's Encrypt certificates via DNS verification (Azure or DigitalOcean)"
 category: "Security"
 
 variables:
   domain:
-    description: "Domain name for the certificate"
+    description: "FQDN for the certificate (e.g. myvm.example.com)"
   email_address:
     description: "ACME account email address"
+  dns_provider:
+    description: "DNS provider for verification: azure or digitalocean"
+    default: "azure"
+  install_target:
+    description: "Where to install certs: nginx (/etc/nginx/ssl), gitlab (/etc/gitlab/ssl), or general (/etc/ssl/)"
+    default: "general"
+  issue_wildcard:
+    description: "Also issue wildcard certificate (*.domain)"
+    type: "boolean"
+    default: "false"
   acme_server:
     description: "ACME server URL"
     default: "https://acme-v02.api.letsencrypt.org/directory"
@@ -15,23 +25,22 @@ variables:
     default: "30"
   force_renewal:
     description: "Force renewal even if certificate is still valid"
+    type: "boolean"
     default: "false"
-  reload_command:
-    description: "Command to run after certificate renewal (e.g. systemctl reload nginx)"
-    default: "true"
-  dns_provider:
-    description: "DNS provider for DNS-01 challenge (leave empty for standalone HTTP-01)"
-    default: ""
   azure_subscription:
-    description: "Azure Subscription ID (required if dns_provider=azure)"
+    description: "Azure Subscription ID (required for Azure DNS)"
     default: ""
   azure_tenant:
-    description: "Azure AD Tenant ID (required if dns_provider=azure)"
+    description: "Azure AD Tenant ID (required for Azure DNS)"
     default: ""
   azure_client_id:
-    description: "Azure SPN Client ID (required if dns_provider=azure)"
+    description: "Azure SPN Client ID (required for Azure DNS)"
     default: ""
   azure_secret:
-    description: "Azure SPN Client Secret (required if dns_provider=azure)"
+    description: "Azure SPN Client Secret (required for Azure DNS)"
+    secret: true
+    default: ""
+  do_api_key:
+    description: "DigitalOcean API token (required for DigitalOcean DNS)"
     secret: true
     default: ""

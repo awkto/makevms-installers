@@ -3,7 +3,27 @@
   hosts: target_vm
   become: yes
 
+  vars:
+    # Build domain args: primary domain + optional wildcard
+    _domain_args: >-
+      -d "{{ domain }}"
+      {{ '-d "*.' + domain + '"' if issue_wildcard | default(false) | bool else '' }}
+
+    # Install paths per target
+    _install_paths:
+      nginx:
+        cert_dir: "/etc/nginx/ssl/{{ domain }}"
+        reload_cmd: "systemctl reload nginx"
+      gitlab:
+        cert_dir: "/etc/gitlab/ssl"
+        reload_cmd: "gitlab-ctl hup nginx"
+      general:
+        cert_dir: "/etc/ssl/{{ domain }}"
+        reload_cmd: "true"
+    _target: "{{ _install_paths[install_target] }}"
+
   tasks:
+    # ── Install acme.sh ───────────────────────────────────────────────
     - name: Install prerequisites
       apt:
         name:
@@ -23,19 +43,8 @@
       command: /root/.acme.sh/acme.sh --set-default-ca --server {{ acme_server }}
       changed_when: false
 
-    - name: Issue certificate (standalone mode)
-      shell: |
-        /root/.acme.sh/acme.sh --issue \
-          -d "{{ domain }}" \
-          --standalone \
-          --days {{ renewal_days }} \
-          {{ '--force' if force_renewal | default(false) | bool else '' }}
-      register: cert_result
-      changed_when: "'Cert success' in cert_result.stdout"
-      failed_when: cert_result.rc != 0 and 'Domains not changed' not in cert_result.stdout
-      when: dns_provider == "" or dns_provider is not defined
-
-    - name: Issue certificate (Azure DNS)
+    # ── Issue certificate (Azure DNS) ─────────────────────────────────
+    - name: Issue certificate via Azure DNS
       shell: |
         export AZUREDNS_SUBSCRIPTIONID="{{ azure_subscription }}"
         export AZUREDNS_TENANTID="{{ azure_tenant }}"
@@ -44,35 +53,111 @@
 
         /root/.acme.sh/acme.sh --issue \
           --dns dns_azure \
-          -d "{{ domain }}" \
+          {{ _domain_args }} \
           --server {{ acme_server }} \
           --days {{ renewal_days }} \
           {{ '--force' if force_renewal | default(false) | bool else '' }}
-      register: cert_result_azure
-      changed_when: "'Cert success' in cert_result_azure.stdout"
-      failed_when: cert_result_azure.rc != 0 and 'Domains not changed' not in cert_result_azure.stdout
+      register: cert_result
+      changed_when: "'Cert success' in cert_result.stdout"
+      failed_when: cert_result.rc != 0 and 'Domains not changed' not in cert_result.stdout
       when: dns_provider == "azure"
 
-    - name: Create SSL directory
+    # ── Issue certificate (DigitalOcean DNS) ──────────────────────────
+    - name: Issue certificate via DigitalOcean DNS
+      shell: |
+        export DO_API_KEY="{{ do_api_key }}"
+
+        /root/.acme.sh/acme.sh --issue \
+          --dns dns_dgon \
+          {{ _domain_args }} \
+          --server {{ acme_server }} \
+          --days {{ renewal_days }} \
+          {{ '--force' if force_renewal | default(false) | bool else '' }}
+      register: cert_result_do
+      changed_when: "'Cert success' in cert_result_do.stdout"
+      failed_when: cert_result_do.rc != 0 and 'Domains not changed' not in cert_result_do.stdout
+      when: dns_provider == "digitalocean"
+
+    # ── Install certificate ───────────────────────────────────────────
+    - name: Create certificate directory
       file:
-        path: "/etc/ssl/{{ domain }}"
+        path: "{{ _target.cert_dir }}"
         state: directory
         mode: "0755"
 
-    - name: Install certificate
+    - name: Install certificate files
       shell: |
         /root/.acme.sh/acme.sh --install-cert \
           -d "{{ domain }}" \
-          --cert-file /etc/ssl/{{ domain }}/cert.pem \
-          --key-file /etc/ssl/{{ domain }}/key.pem \
-          --fullchain-file /etc/ssl/{{ domain }}/fullchain.pem \
-          --reloadcmd "{{ reload_command }}"
+          --cert-file "{{ _target.cert_dir }}/cert.pem" \
+          --key-file "{{ _target.cert_dir }}/key.pem" \
+          --fullchain-file "{{ _target.cert_dir }}/fullchain.pem" \
+          --reloadcmd "{{ _target.reload_cmd }}"
 
-    - name: Display certificate location
+    # ── GitLab: fix permissions and configure ─────────────────────────
+    - name: Set GitLab SSL file permissions
+      block:
+        - name: Set certificate ownership for GitLab
+          file:
+            path: "{{ _target.cert_dir }}/{{ item }}"
+            owner: root
+            group: root
+            mode: "0600"
+          loop:
+            - cert.pem
+            - key.pem
+            - fullchain.pem
+
+        - name: Symlink cert files with GitLab naming convention
+          file:
+            src: "{{ _target.cert_dir }}/{{ item.src }}"
+            dest: "{{ _target.cert_dir }}/{{ domain }}.{{ item.ext }}"
+            state: link
+          loop:
+            - { src: fullchain.pem, ext: crt }
+            - { src: key.pem, ext: key }
+
+        - name: Configure GitLab external URL for HTTPS
+          lineinfile:
+            path: /etc/gitlab/gitlab.rb
+            regexp: "^external_url "
+            line: "external_url 'https://{{ domain }}'"
+          notify: Reconfigure GitLab
+      when: install_target == "gitlab"
+
+    # ── Nginx: create SSL snippet ─────────────────────────────────────
+    - name: Create Nginx SSL snippet
+      copy:
+        dest: "/etc/nginx/snippets/ssl-{{ domain }}.conf"
+        content: |
+          ssl_certificate     {{ _target.cert_dir }}/fullchain.pem;
+          ssl_certificate_key {{ _target.cert_dir }}/key.pem;
+          ssl_protocols       TLSv1.2 TLSv1.3;
+          ssl_ciphers         HIGH:!aNULL:!MD5;
+        mode: "0644"
+      when: install_target == "nginx"
+
+    # ── Summary ───────────────────────────────────────────────────────
+    - name: Display certificate info
       debug:
         msg: |
-          Certificate installed to /etc/ssl/{{ domain }}/
-            cert.pem      — certificate
-            key.pem       — private key
-            fullchain.pem — full chain
+          Certificate issued for: {{ domain }}{{ ' + *.' + domain if issue_wildcard | default(false) | bool else '' }}
+          DNS Provider: {{ dns_provider }}
+          Install target: {{ install_target }}
+
+          Files:
+            {{ _target.cert_dir }}/cert.pem
+            {{ _target.cert_dir }}/key.pem
+            {{ _target.cert_dir }}/fullchain.pem
+
+          Reload command: {{ _target.reload_cmd }}
           Auto-renewal is configured via cron.
+          {% if install_target == 'nginx' %}
+
+          Nginx: Include in your server block:
+            include snippets/ssl-{{ domain }}.conf;
+          {% endif %}
+
+  handlers:
+    - name: Reconfigure GitLab
+      command: gitlab-ctl reconfigure
