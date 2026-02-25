@@ -1,0 +1,78 @@
+---
+- name: Install acme.sh and Issue Certificate
+  hosts: target_vm
+  become: yes
+
+  tasks:
+    - name: Install prerequisites
+      apt:
+        name:
+          - curl
+          - socat
+          - cron
+        state: present
+        update_cache: yes
+
+    - name: Download and install acme.sh
+      shell: |
+        curl https://get.acme.sh | sh -s email={{ email_address }}
+      args:
+        creates: /root/.acme.sh/acme.sh
+
+    - name: Set default CA
+      command: /root/.acme.sh/acme.sh --set-default-ca --server {{ acme_server }}
+      changed_when: false
+
+    - name: Issue certificate (standalone mode)
+      shell: |
+        /root/.acme.sh/acme.sh --issue \
+          -d "{{ domain }}" \
+          --standalone \
+          --days {{ renewal_days }} \
+          {{ '--force' if force_renewal | default(false) | bool else '' }}
+      register: cert_result
+      changed_when: "'Cert success' in cert_result.stdout"
+      failed_when: cert_result.rc != 0 and 'Domains not changed' not in cert_result.stdout
+      when: dns_provider == "" or dns_provider is not defined
+
+    - name: Issue certificate (Azure DNS)
+      shell: |
+        export AZUREDNS_SUBSCRIPTIONID="{{ azure_subscription }}"
+        export AZUREDNS_TENANTID="{{ azure_tenant }}"
+        export AZUREDNS_APPID="{{ azure_client_id }}"
+        export AZUREDNS_CLIENTSECRET="{{ azure_secret }}"
+
+        /root/.acme.sh/acme.sh --issue \
+          --dns dns_azure \
+          -d "{{ domain }}" \
+          --server {{ acme_server }} \
+          --days {{ renewal_days }} \
+          {{ '--force' if force_renewal | default(false) | bool else '' }}
+      register: cert_result_azure
+      changed_when: "'Cert success' in cert_result_azure.stdout"
+      failed_when: cert_result_azure.rc != 0 and 'Domains not changed' not in cert_result_azure.stdout
+      when: dns_provider == "azure"
+
+    - name: Create SSL directory
+      file:
+        path: "/etc/ssl/{{ domain }}"
+        state: directory
+        mode: "0755"
+
+    - name: Install certificate
+      shell: |
+        /root/.acme.sh/acme.sh --install-cert \
+          -d "{{ domain }}" \
+          --cert-file /etc/ssl/{{ domain }}/cert.pem \
+          --key-file /etc/ssl/{{ domain }}/key.pem \
+          --fullchain-file /etc/ssl/{{ domain }}/fullchain.pem \
+          --reloadcmd "{{ reload_command }}"
+
+    - name: Display certificate location
+      debug:
+        msg: |
+          Certificate installed to /etc/ssl/{{ domain }}/
+            cert.pem      — certificate
+            key.pem       — private key
+            fullchain.pem — full chain
+          Auto-renewal is configured via cron.

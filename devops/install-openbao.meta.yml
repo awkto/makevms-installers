@@ -1,0 +1,20 @@
+name: "Install OpenBao"
+description: "Install OpenBao secrets manager (open-source Vault fork)"
+category: "DevOps"
+
+variables:
+  openbao_listen_address:
+    description: "Address and port for OpenBao to listen on"
+    default: "0.0.0.0:8200"
+  openbao_api_addr:
+    description: "Full API address (used for client redirects)"
+    default: "http://127.0.0.1:8200"
+  openbao_storage_path:
+    description: "Path for file-based storage backend"
+    default: "/opt/openbao/data"
+  openbao_ui_enabled:
+    description: "Enable the web UI"
+    default: "true"
+  openbao_tls_disable:
+    description: "Disable TLS on the listener (set to false in production)"
+    default: "true"

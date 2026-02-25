@@ -1,0 +1,8 @@
+name: "Install Docker"
+description: "Install Docker Engine, Docker CLI, and Docker Compose plugin"
+category: "Basics"
+
+variables:
+  docker_user:
+    description: "User to add to the docker group (leave empty to skip)"
+    default: ""

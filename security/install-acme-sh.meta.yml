@@ -1,0 +1,37 @@
+name: "Install acme.sh"
+description: "Install acme.sh and issue SSL/TLS certificates via ACME protocol"
+category: "Security"
+
+variables:
+  domain:
+    description: "Domain name for the certificate"
+  email_address:
+    description: "ACME account email address"
+  acme_server:
+    description: "ACME server URL"
+    default: "https://acme-v02.api.letsencrypt.org/directory"
+  renewal_days:
+    description: "Certificate renewal threshold in days"
+    default: "30"
+  force_renewal:
+    description: "Force renewal even if certificate is still valid"
+    default: "false"
+  reload_command:
+    description: "Command to run after certificate renewal (e.g. systemctl reload nginx)"
+    default: "true"
+  dns_provider:
+    description: "DNS provider for DNS-01 challenge (leave empty for standalone HTTP-01)"
+    default: ""
+  azure_subscription:
+    description: "Azure Subscription ID (required if dns_provider=azure)"
+    default: ""
+  azure_tenant:
+    description: "Azure AD Tenant ID (required if dns_provider=azure)"
+    default: ""
+  azure_client_id:
+    description: "Azure SPN Client ID (required if dns_provider=azure)"
+    default: ""
+  azure_secret:
+    description: "Azure SPN Client Secret (required if dns_provider=azure)"
+    secret: true
+    default: ""

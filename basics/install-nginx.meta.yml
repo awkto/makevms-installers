@@ -1,0 +1,11 @@
+name: "Install Nginx"
+description: "Install and configure Nginx web server with optional virtual host"
+category: "Basics"
+
+variables:
+  server_name:
+    description: "Server name / domain for the virtual host (leave empty for default site only)"
+    default: ""
+  document_root:
+    description: "Document root directory"
+    default: "/var/www/html"

@@ -1,0 +1,80 @@
+---
+- name: Install OpenBao
+  hosts: target_vm
+  become: yes
+
+  tasks:
+    - name: Install prerequisites
+      apt:
+        name:
+          - curl
+          - gpg
+          - wget
+        state: present
+        update_cache: yes
+
+    - name: Add OpenBao GPG key
+      shell: |
+        wget -qO- https://pkg.openbao.org/gpg.key | gpg --dearmor -o /usr/share/keyrings/openbao-archive-keyring.gpg --yes
+      args:
+        creates: /usr/share/keyrings/openbao-archive-keyring.gpg
+
+    - name: Add OpenBao repository
+      shell: |
+        echo "deb [signed-by=/usr/share/keyrings/openbao-archive-keyring.gpg] https://pkg.openbao.org/deb stable main" \
+          | tee /etc/apt/sources.list.d/openbao.list > /dev/null
+      args:
+        creates: /etc/apt/sources.list.d/openbao.list
+
+    - name: Install OpenBao
+      apt:
+        name: openbao
+        state: present
+        update_cache: yes
+
+    - name: Create OpenBao configuration
+      copy:
+        dest: /etc/openbao/config.hcl
+        content: |
+          ui = {{ openbao_ui_enabled }}
+
+          listener "tcp" {
+            address     = "{{ openbao_listen_address }}"
+            tls_disable = {{ openbao_tls_disable }}
+          }
+
+          storage "file" {
+            path = "{{ openbao_storage_path }}"
+          }
+
+          api_addr = "{{ openbao_api_addr }}"
+        owner: openbao
+        group: openbao
+        mode: "0640"
+      notify: Restart OpenBao
+
+    - name: Create storage directory
+      file:
+        path: "{{ openbao_storage_path }}"
+        state: directory
+        owner: openbao
+        group: openbao
+        mode: "0750"
+
+    - name: Enable and start OpenBao
+      systemd:
+        name: openbao
+        enabled: yes
+        state: started
+
+    - name: Display status
+      debug:
+        msg: >
+          OpenBao installed. Access at {{ openbao_api_addr }}.
+          Initialize with: bao operator init
+
+  handlers:
+    - name: Restart OpenBao
+      systemd:
+        name: openbao
+        state: restarted

@@ -1,0 +1,70 @@
+---
+- name: Install GitLab CE
+  hosts: target_vm
+  become: yes
+
+  tasks:
+    - name: Install prerequisites
+      apt:
+        name:
+          - curl
+          - openssh-server
+          - ca-certificates
+          - tzdata
+          - perl
+          - postfix
+        state: present
+        update_cache: yes
+
+    - name: Check if GitLab is already installed
+      stat:
+        path: /opt/gitlab
+      register: gitlab_installed
+
+    - name: Add GitLab repository
+      shell: |
+        curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+      when: not gitlab_installed.stat.exists
+
+    - name: Install GitLab CE
+      environment:
+        EXTERNAL_URL: "{{ external_url }}"
+      apt:
+        name: gitlab-ce
+        state: present
+      when: not gitlab_installed.stat.exists
+
+    - name: Configure external URL
+      lineinfile:
+        path: /etc/gitlab/gitlab.rb
+        regexp: "^external_url "
+        line: "external_url '{{ external_url }}'"
+      notify: Reconfigure GitLab
+
+    - name: Configure SMTP (optional)
+      blockinfile:
+        path: /etc/gitlab/gitlab.rb
+        marker: "# {mark} MANAGED BY MAKEVMS - SMTP"
+        block: |
+          gitlab_rails['smtp_enable'] = true
+          gitlab_rails['smtp_address'] = "{{ smtp_server }}"
+          gitlab_rails['smtp_port'] = {{ smtp_port }}
+          gitlab_rails['smtp_user_name'] = "{{ smtp_user }}"
+          gitlab_rails['smtp_password'] = "{{ smtp_password }}"
+          gitlab_rails['smtp_domain'] = "{{ smtp_domain }}"
+          gitlab_rails['smtp_authentication'] = "login"
+          gitlab_rails['smtp_enable_starttls_auto'] = true
+          gitlab_rails['gitlab_email_from'] = "{{ gitlab_email_from }}"
+      when: smtp_server is defined and smtp_server != ""
+      notify: Reconfigure GitLab
+
+    - name: Display initial root password location
+      debug:
+        msg: >
+          GitLab installed at {{ external_url }}.
+          Initial root password: cat /etc/gitlab/initial_root_password
+          (expires after 24 hours)
+
+  handlers:
+    - name: Reconfigure GitLab
+      command: gitlab-ctl reconfigure
