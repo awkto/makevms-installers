@@ -3,6 +3,9 @@ description: "Install OpenBao secrets manager (open-source Vault fork)"
 category: "DevOps"
 
 variables:
+  openbao_version:
+    description: "OpenBao version to install (from GitHub releases)"
+    default: "2.5.1"
   openbao_listen_address:
     description: "Address and port for OpenBao to listen on"
     default: "0.0.0.0:8200"

@@ -3,34 +3,33 @@
   hosts: target_vm
   become: yes
 
+  vars:
+    _openbao_deb_url: "https://github.com/openbao/openbao/releases/download/v{{ openbao_version }}/openbao_{{ openbao_version }}_linux_amd64.deb"
+
   tasks:
-    - name: Install prerequisites
+    - name: Check if OpenBao is already installed
+      command: bao version
+      register: bao_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download OpenBao .deb package
+      get_url:
+        url: "{{ _openbao_deb_url }}"
+        dest: "/tmp/openbao_{{ openbao_version }}_linux_amd64.deb"
+        mode: "0644"
+      when: bao_check.rc != 0
+
+    - name: Install OpenBao .deb package
       apt:
-        name:
-          - curl
-          - gpg
-          - wget
+        deb: "/tmp/openbao_{{ openbao_version }}_linux_amd64.deb"
         state: present
-        update_cache: yes
+      when: bao_check.rc != 0
 
-    - name: Add OpenBao GPG key
-      shell: |
-        wget -qO- https://pkg.openbao.org/gpg.key | gpg --dearmor -o /usr/share/keyrings/openbao-archive-keyring.gpg --yes
-      args:
-        creates: /usr/share/keyrings/openbao-archive-keyring.gpg
-
-    - name: Add OpenBao repository
-      shell: |
-        echo "deb [signed-by=/usr/share/keyrings/openbao-archive-keyring.gpg] https://pkg.openbao.org/deb stable main" \
-          | tee /etc/apt/sources.list.d/openbao.list > /dev/null
-      args:
-        creates: /etc/apt/sources.list.d/openbao.list
-
-    - name: Install OpenBao
-      apt:
-        name: openbao
-        state: present
-        update_cache: yes
+    - name: Clean up .deb file
+      file:
+        path: "/tmp/openbao_{{ openbao_version }}_linux_amd64.deb"
+        state: absent
 
     - name: Create OpenBao configuration
       copy:
@@ -67,10 +66,16 @@
         enabled: yes
         state: started
 
+    - name: Verify installation
+      command: bao version
+      register: bao_version
+      changed_when: false
+
     - name: Display status
       debug:
         msg: >
-          OpenBao installed. Access at {{ openbao_api_addr }}.
+          {{ bao_version.stdout }} installed.
+          Access at {{ openbao_api_addr }}.
           Initialize with: bao operator init
 
   handlers:
