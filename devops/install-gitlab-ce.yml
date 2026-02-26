@@ -1,9 +1,12 @@
 ---
-- name: Install GitLab CE
+- name: Install GitLab
   hosts: target_vm
   become: yes
 
   vars:
+    _pkg_name: "{{ gitlab_edition | default('gitlab-ce') }}"
+    _pkg_version: "{{ gitlab_version | default('') }}"
+    _pkg_full: "{{ _pkg_name + '=' + _pkg_version if _pkg_version else _pkg_name }}"
     _protocol: "{{ 'https' if enable_ssl | default(false) | bool else 'http' }}"
     _external_url: "{{ _protocol }}://{{ gitlab_fqdn }}"
 
@@ -27,14 +30,14 @@
 
     - name: Add GitLab repository
       shell: |
-        curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
+        curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/{{ _pkg_name }}/script.deb.sh | bash
       when: not gitlab_installed.stat.exists
 
-    - name: Install GitLab CE
+    - name: Install GitLab
       environment:
         EXTERNAL_URL: "{{ _external_url }}"
       apt:
-        name: gitlab-ce
+        name: "{{ _pkg_full }}"
         state: present
       when: not gitlab_installed.stat.exists
 
@@ -75,7 +78,7 @@
     - name: Display initial root password location
       debug:
         msg: >
-          GitLab installed at {{ _external_url }}.
+          GitLab ({{ _pkg_name }}) installed at {{ _external_url }}.
           Initial root password: cat /etc/gitlab/initial_root_password
           (expires after 24 hours)
 

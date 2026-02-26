@@ -1,8 +1,19 @@
-name: "Install GitLab CE"
-description: "Install GitLab Community Edition with optional SMTP configuration"
+name: "Install GitLab"
+description: "Install GitLab Community or Enterprise Edition with optional SMTP configuration"
 category: "DevOps"
 
 variables:
+  gitlab_edition:
+    description: "GitLab edition to install"
+    default: "gitlab-ce"
+    options:
+      - label: "Community Edition"
+        value: "gitlab-ce"
+      - label: "Enterprise Edition"
+        value: "gitlab-ee"
+  gitlab_version:
+    description: "Version to install (e.g. 17.6.1-ce.0 for CE, 17.6.1-ee.0 for EE). Leave empty for latest."
+    default: ""
   gitlab_fqdn:
     description: "Fully qualified domain name for GitLab"
     vm_field: fqdn
