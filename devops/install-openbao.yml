@@ -121,6 +121,13 @@
       when: not deb_service.stat.exists
       notify: Reload and Restart OpenBao
 
+    - name: Ensure override directory exists
+      file:
+        path: /etc/systemd/system/openbao.service.d
+        state: directory
+        mode: "0755"
+      when: deb_service.stat.exists
+
     - name: Override .deb service for dev mode
       copy:
         dest: /etc/systemd/system/openbao.service.d/override.conf
@@ -133,13 +140,6 @@
         mode: "0644"
       when: deb_service.stat.exists
       notify: Reload and Restart OpenBao
-
-    - name: Ensure override directory exists
-      file:
-        path: /etc/systemd/system/openbao.service.d
-        state: directory
-        mode: "0755"
-      when: deb_service.stat.exists
 
     - name: Enable and start OpenBao
       systemd:
