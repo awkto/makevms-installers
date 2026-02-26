@@ -16,7 +16,7 @@
         reload_cmd: "if systemctl is-active --quiet nginx 2>/dev/null; then nginx -t && systemctl reload nginx; fi"
       gitlab:
         cert_dir: "/etc/gitlab/ssl"
-        reload_cmd: "gitlab-ctl hup nginx"
+        reload_cmd: "true"
       general:
         cert_dir: "/etc/ssl/{{ domain }}"
         reload_cmd: "true"
@@ -117,12 +117,6 @@
             - { src: fullchain.pem, ext: crt }
             - { src: key.pem, ext: key }
 
-        - name: Configure GitLab external URL for HTTPS
-          lineinfile:
-            path: /etc/gitlab/gitlab.rb
-            regexp: "^external_url "
-            line: "external_url 'https://{{ domain }}'"
-          notify: Reconfigure GitLab
       when: install_target == "gitlab"
 
     # ── Nginx: create SSL snippet ─────────────────────────────────────
@@ -157,7 +151,6 @@
             {{ _target.cert_dir }}/key.pem
             {{ _target.cert_dir }}/fullchain.pem
 
-          Reload command: {{ _target.reload_cmd }}
           Auto-renewal is configured via cron.
           {% if install_target == 'nginx' %}
 
@@ -165,6 +158,4 @@
             include snippets/ssl-{{ domain }}.conf;
           {% endif %}
 
-  handlers:
-    - name: Reconfigure GitLab
-      command: gitlab-ctl reconfigure
+  handlers: []
