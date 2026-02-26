@@ -1,5 +1,5 @@
 name: "Install OpenBao"
-description: "Install OpenBao secrets manager in dev mode with persistent file storage, web UI, and auto-start on reboot"
+description: "Install OpenBao secrets manager with persistent file storage, web UI, and auto-unseal on reboot"
 category: "DevOps"
 
 variables:
@@ -9,6 +9,3 @@ variables:
   openbao_listen_address:
     description: "Address and port for OpenBao to listen on"
     default: "0.0.0.0:8200"
-  openbao_root_token:
-    description: "Root Token (will generate one if blank)"
-    secret: true

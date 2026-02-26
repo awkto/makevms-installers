@@ -6,6 +6,8 @@
   vars:
     _openbao_deb_url: "https://github.com/openbao/openbao/releases/download/v{{ openbao_version }}/openbao_{{ openbao_version }}_linux_amd64.deb"
     _storage_path: "/opt/openbao/data"
+    _listen_port: "{{ openbao_listen_address.split(':')[1] | default('8200') }}"
+    _keys_file: "/opt/openbao/init-keys.json"
 
   tasks:
     # ── Install ────────────────────────────────────────────────────────
@@ -63,11 +65,15 @@
       copy:
         dest: /etc/openbao/config.hcl
         content: |
-          # OpenBao dev server with persistent file storage
+          # OpenBao server with persistent file storage
           # Managed by MakeVMs — edit freely, service restart applies changes
-          # Note: listener is controlled by -dev-listen-address in the service ExecStart
 
           ui = true
+
+          listener "tcp" {
+            address     = "{{ openbao_listen_address }}"
+            tls_disable = true
+          }
 
           storage "file" {
             path = "{{ _storage_path }}"
@@ -78,6 +84,31 @@
         group: openbao
         mode: "0640"
       notify: Restart OpenBao
+
+    - name: Write auto-unseal script
+      copy:
+        dest: /opt/openbao/unseal.sh
+        owner: openbao
+        group: openbao
+        mode: "0750"
+        content: |
+          #!/usr/bin/env bash
+          # Auto-unseal OpenBao on service start using the stored init key.
+          # Does nothing if the keys file is missing (first-boot init not yet run).
+          KEYS_FILE="{{ _keys_file }}"
+          BAO_ADDR="http://127.0.0.1:{{ _listen_port }}"
+          export BAO_ADDR
+
+          [[ -f "$KEYS_FILE" ]] || exit 0
+
+          KEY=$(python3 -c "import json; d=json.load(open('$KEYS_FILE')); print(d['unseal_keys_b64'][0])")
+
+          for i in $(seq 1 15); do
+              if /usr/bin/bao operator unseal "$KEY" >/dev/null 2>&1; then
+                  exit 0
+              fi
+              sleep 1
+          done
 
     # ── Systemd service ───────────────────────────────────────────────
     - name: Check if .deb provided a service file
@@ -99,14 +130,14 @@
           Type=simple
           User=openbao
           Group=openbao
-          ExecStart=/usr/bin/bao server -dev{% if openbao_root_token | default('') %} -dev-root-token-id={{ openbao_root_token }}{% endif %} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
+          ExecStart=/usr/bin/bao server -config=/etc/openbao/config.hcl
+          ExecStartPost=/opt/openbao/unseal.sh
           ExecReload=/bin/kill --signal HUP $MAINPID
           Restart=on-failure
           RestartSec=5
           LimitNOFILE=65536
           LimitMEMLOCK=infinity
-          {% if openbao_root_token | default('') %}Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
-          {% endif %}Environment=HOME=/opt/openbao
+          Environment=HOME=/opt/openbao
 
           [Install]
           WantedBy=multi-user.target
@@ -121,7 +152,7 @@
         mode: "0755"
       when: deb_service.stat.exists
 
-    - name: Override .deb service for dev mode
+    - name: Override .deb service for server mode with auto-unseal
       copy:
         dest: /etc/systemd/system/openbao.service.d/override.conf
         content: |
@@ -132,9 +163,10 @@
           Type=simple
           EnvironmentFile=
           ExecStart=
-          ExecStart=/usr/bin/bao server -dev{% if openbao_root_token | default('') %} -dev-root-token-id={{ openbao_root_token }}{% endif %} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
-          {% if openbao_root_token | default('') %}Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
-          {% endif %}Environment=HOME=/opt/openbao
+          ExecStart=/usr/bin/bao server -config=/etc/openbao/config.hcl
+          ExecStartPost=
+          ExecStartPost=/opt/openbao/unseal.sh
+          Environment=HOME=/opt/openbao
         mode: "0644"
       when: deb_service.stat.exists
       notify: Reload and Restart OpenBao
@@ -146,32 +178,84 @@
         state: started
         daemon_reload: yes
 
-    # ── Verify ─────────────────────────────────────────────────────────
-    - name: Wait for OpenBao to be ready
+    # ── First-time init & unseal ───────────────────────────────────────
+    - name: Wait for OpenBao to accept connections
       uri:
-        url: "http://127.0.0.1:{{ openbao_listen_address.split(':')[1] | default('8200') }}/v1/sys/health"
-        status_code: [200, 429, 472, 473, 501, 503]
+        url: "http://127.0.0.1:{{ _listen_port }}/v1/sys/health"
+        status_code: [200, 429, 501, 503]
       register: health
-      retries: 10
+      retries: 15
       delay: 2
       until: health.status is defined
+
+    - name: Check if OpenBao has already been initialized
+      stat:
+        path: "{{ _keys_file }}"
+      register: init_keys_stat
+
+    - name: Initialize OpenBao (first run only)
+      command: >
+        bao operator init
+        -key-shares=1
+        -key-threshold=1
+        -format=json
+      register: bao_init_result
+      environment:
+        BAO_ADDR: "http://127.0.0.1:{{ _listen_port }}"
+      when: not init_keys_stat.stat.exists
+      no_log: true
+
+    - name: Save init keys to disk
+      copy:
+        dest: "{{ _keys_file }}"
+        content: "{{ bao_init_result.stdout }}"
+        owner: openbao
+        group: openbao
+        mode: "0600"
+      when: not init_keys_stat.stat.exists
+
+    - name: Unseal OpenBao after initialization
+      shell: |
+        KEY=$(python3 -c "import json; d=json.load(open('{{ _keys_file }}')); print(d['unseal_keys_b64'][0])")
+        bao operator unseal "$KEY"
+      environment:
+        BAO_ADDR: "http://127.0.0.1:{{ _listen_port }}"
+      when: not init_keys_stat.stat.exists
+      no_log: true
+
+    # ── Verify ─────────────────────────────────────────────────────────
+    - name: Wait for OpenBao to be unsealed
+      uri:
+        url: "http://127.0.0.1:{{ _listen_port }}/v1/sys/health"
+        status_code: [200]
+      register: health_final
+      retries: 10
+      delay: 2
+      until: health_final.status == 200
 
     - name: Get version
       command: bao version
       register: bao_version
       changed_when: false
 
+    - name: Read stored init keys
+      slurp:
+        src: "{{ _keys_file }}"
+      register: stored_keys_raw
+      no_log: true
+
     - name: Display status
       debug:
         msg: |
           {{ bao_version.stdout }}
           UI:         http://{{ openbao_listen_address }}
-          Root Token: {{ openbao_root_token if openbao_root_token | default('') else '(auto-generated — check service logs)' }}
-          Status:     Dev mode with persistent storage at {{ _storage_path }}
+          Root Token: {{ (stored_keys_raw.content | b64decode | from_json).root_token }}
+          Keys file:  {{ _keys_file }} (keep this safe — needed for unseal on restart)
+          Status:     Running with persistent storage at {{ _storage_path }}
 
           To use the CLI:
             export BAO_ADDR=http://{{ openbao_listen_address }}
-            export BAO_TOKEN={{ openbao_root_token if openbao_root_token | default('') else '<your-root-token>' }}
+            export BAO_TOKEN={{ (stored_keys_raw.content | b64decode | from_json).root_token }}
             bao status
 
   handlers:
