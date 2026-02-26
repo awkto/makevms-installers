@@ -3,6 +3,10 @@
   hosts: target_vm
   become: yes
 
+  vars:
+    _protocol: "{{ 'https' if enable_ssl | default(false) | bool else 'http' }}"
+    _external_url: "{{ _protocol }}://{{ gitlab_fqdn }}"
+
   tasks:
     - name: Install prerequisites
       apt:
@@ -28,7 +32,7 @@
 
     - name: Install GitLab CE
       environment:
-        EXTERNAL_URL: "{{ external_url }}"
+        EXTERNAL_URL: "{{ _external_url }}"
       apt:
         name: gitlab-ce
         state: present
@@ -38,7 +42,17 @@
       lineinfile:
         path: /etc/gitlab/gitlab.rb
         regexp: "^external_url "
-        line: "external_url '{{ external_url }}'"
+        line: "external_url '{{ _external_url }}'"
+      notify: Reconfigure GitLab
+
+    - name: Configure SSL certificates
+      blockinfile:
+        path: /etc/gitlab/gitlab.rb
+        marker: "# {mark} MANAGED BY MAKEVMS - SSL"
+        block: |
+          nginx['ssl_certificate'] = "/etc/gitlab/ssl/{{ gitlab_fqdn }}.crt"
+          nginx['ssl_certificate_key'] = "/etc/gitlab/ssl/{{ gitlab_fqdn }}.key"
+      when: enable_ssl | default(false) | bool
       notify: Reconfigure GitLab
 
     - name: Configure SMTP (optional)
@@ -61,7 +75,7 @@
     - name: Display initial root password location
       debug:
         msg: >
-          GitLab installed at {{ external_url }}.
+          GitLab installed at {{ _external_url }}.
           Initial root password: cat /etc/gitlab/initial_root_password
           (expires after 24 hours)
 

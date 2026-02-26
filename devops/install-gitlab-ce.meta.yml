@@ -3,8 +3,12 @@ description: "Install GitLab Community Edition with optional SMTP configuration"
 category: "DevOps"
 
 variables:
-  external_url:
-    description: "External URL for GitLab (e.g. https://gitlab.example.com)"
+  gitlab_fqdn:
+    description: "Fully qualified domain name for GitLab"
+  enable_ssl:
+    description: "Enable HTTPS using certificates from /etc/gitlab/ssl/ (run acme.sh installer first)"
+    type: "boolean"
+    default: "false"
   smtp_server:
     description: "SMTP server address (leave empty to skip SMTP setup)"
     default: ""

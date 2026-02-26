@@ -4,14 +4,17 @@ category: "Security"
 
 variables:
   domain:
-    description: "FQDN for the certificate (e.g. myvm.example.com)"
+    description: "FQDN for the certificate"
+    vm_default: fqdn
   email_address:
     description: "ACME account email address"
   dns_provider:
-    description: "DNS provider for verification: azure or digitalocean"
+    description: "DNS provider for verification"
+    options: ["azure", "digitalocean"]
     default: "azure"
   install_target:
-    description: "Where to install certs: nginx (/etc/nginx/ssl), gitlab (/etc/gitlab/ssl), or general (/etc/ssl/)"
+    description: "Where to install certs"
+    options: ["nginx", "gitlab", "general"]
     default: "general"
   issue_wildcard:
     description: "Also issue wildcard certificate (*.domain)"
@@ -28,19 +31,32 @@ variables:
     type: "boolean"
     default: "false"
   azure_subscription:
-    description: "Azure Subscription ID (required for Azure DNS)"
+    description: "Azure Subscription ID"
+    json_group: azure_spn
+    json_key: subscriptionId
+    show_when: { dns_provider: "azure" }
     default: ""
   azure_tenant:
-    description: "Azure AD Tenant ID (required for Azure DNS)"
+    description: "Azure AD Tenant ID"
+    json_group: azure_spn
+    json_key: tenantId
+    show_when: { dns_provider: "azure" }
     default: ""
   azure_client_id:
-    description: "Azure SPN Client ID (required for Azure DNS)"
+    description: "Azure SPN Client ID"
+    json_group: azure_spn
+    json_key: clientId
+    show_when: { dns_provider: "azure" }
     default: ""
   azure_secret:
-    description: "Azure SPN Client Secret (required for Azure DNS)"
+    description: "Azure SPN Client Secret"
     secret: true
+    json_group: azure_spn
+    json_key: clientSecret
+    show_when: { dns_provider: "azure" }
     default: ""
   do_api_key:
-    description: "DigitalOcean API token (required for DigitalOcean DNS)"
+    description: "DigitalOcean API token"
     secret: true
+    show_when: { dns_provider: "digitalocean" }
     default: ""
