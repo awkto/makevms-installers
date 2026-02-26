@@ -126,6 +126,13 @@
       when: install_target == "gitlab"
 
     # ── Nginx: create SSL snippet ─────────────────────────────────────
+    - name: Ensure Nginx snippets directory exists
+      file:
+        path: /etc/nginx/snippets
+        state: directory
+        mode: "0755"
+      when: install_target == "nginx"
+
     - name: Create Nginx SSL snippet
       copy:
         dest: "/etc/nginx/snippets/ssl-{{ domain }}.conf"

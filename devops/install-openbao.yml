@@ -96,16 +96,17 @@
           Wants=network-online.target
 
           [Service]
+          Type=simple
           User=openbao
           Group=openbao
-          ExecStart=/usr/bin/bao server -dev -dev-root-token-id={{ openbao_root_token }} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
+          ExecStart=/usr/bin/bao server -dev{% if openbao_root_token | default('') %} -dev-root-token-id={{ openbao_root_token }}{% endif %} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
           ExecReload=/bin/kill --signal HUP $MAINPID
           Restart=on-failure
           RestartSec=5
           LimitNOFILE=65536
           LimitMEMLOCK=infinity
-          Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
-          Environment=HOME=/opt/openbao
+          {% if openbao_root_token | default('') %}Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
+          {% endif %}Environment=HOME=/opt/openbao
 
           [Install]
           WantedBy=multi-user.target
@@ -128,10 +129,12 @@
           ConditionFileNotEmpty=
 
           [Service]
+          Type=simple
+          EnvironmentFile=
           ExecStart=
-          ExecStart=/usr/bin/bao server -dev -dev-root-token-id={{ openbao_root_token }} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
-          Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
-          Environment=HOME=/opt/openbao
+          ExecStart=/usr/bin/bao server -dev{% if openbao_root_token | default('') %} -dev-root-token-id={{ openbao_root_token }}{% endif %} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
+          {% if openbao_root_token | default('') %}Environment=BAO_DEV_ROOT_TOKEN_ID={{ openbao_root_token }}
+          {% endif %}Environment=HOME=/opt/openbao
         mode: "0644"
       when: deb_service.stat.exists
       notify: Reload and Restart OpenBao
@@ -163,12 +166,12 @@
         msg: |
           {{ bao_version.stdout }}
           UI:         http://{{ openbao_listen_address }}
-          Root Token: {{ openbao_root_token }}
+          Root Token: {{ openbao_root_token if openbao_root_token | default('') else '(auto-generated — check service logs)' }}
           Status:     Dev mode with persistent storage at {{ _storage_path }}
 
           To use the CLI:
             export BAO_ADDR=http://{{ openbao_listen_address }}
-            export BAO_TOKEN={{ openbao_root_token }}
+            export BAO_TOKEN={{ openbao_root_token if openbao_root_token | default('') else '<your-root-token>' }}
             bao status
 
   handlers:

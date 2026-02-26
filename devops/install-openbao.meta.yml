@@ -10,6 +10,5 @@ variables:
     description: "Address and port for OpenBao to listen on"
     default: "0.0.0.0:8200"
   openbao_root_token:
-    description: "Dev mode root token (used to authenticate)"
-    default: "root"
+    description: "Root Token (will generate one if blank)"
     secret: true
