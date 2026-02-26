@@ -65,21 +65,13 @@
         content: |
           # OpenBao dev server with persistent file storage
           # Managed by MakeVMs — edit freely, service restart applies changes
+          # Note: listener is controlled by -dev-listen-address in the service ExecStart
 
           ui = true
-
-          listener "tcp" {
-            address     = "{{ openbao_listen_address }}"
-            tls_disable = true
-          }
 
           storage "file" {
             path = "{{ _storage_path }}"
           }
-
-          # Dev mode root token (change in production)
-          # The server starts unsealed with this token
-          disable_mlock = true
 
           api_addr = "http://{{ openbao_listen_address }}"
         owner: openbao
@@ -132,6 +124,9 @@
       copy:
         dest: /etc/systemd/system/openbao.service.d/override.conf
         content: |
+          [Unit]
+          ConditionFileNotEmpty=
+
           [Service]
           ExecStart=
           ExecStart=/usr/bin/bao server -dev -dev-root-token-id={{ openbao_root_token }} -dev-listen-address={{ openbao_listen_address }} -config=/etc/openbao/config.hcl
