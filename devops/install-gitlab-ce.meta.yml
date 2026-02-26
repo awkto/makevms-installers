@@ -5,6 +5,7 @@ category: "DevOps"
 variables:
   gitlab_fqdn:
     description: "Fully qualified domain name for GitLab"
+    vm_default: fqdn
   enable_ssl:
     description: "Enable HTTPS using certificates from /etc/gitlab/ssl/ (run acme.sh installer first)"
     type: "boolean"
