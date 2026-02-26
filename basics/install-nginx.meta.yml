@@ -12,21 +12,25 @@ variables:
   site_name:
     description: "Config filename in sites-available (defaults to VM hostname)"
     vm_field: hostname
+    show_when: { create_reverse_proxy: "true" }
     group: proxy
     group_label: "Create Reverse Proxy"
   site_fqdn:
     description: "server_name / public domain for the site"
     vm_field: fqdn
+    show_when: { create_reverse_proxy: "true" }
     group: proxy
     group_label: "Create Reverse Proxy"
   proxy_target:
     description: "Upstream address to proxy to"
     default: "127.0.0.1:3000"
+    show_when: { create_reverse_proxy: "true" }
     group: proxy
     group_label: "Create Reverse Proxy"
   enable_ssl:
     description: "Enable SSL (uses existing acme.sh certs or generates self-signed)"
     type: "boolean"
     default: "false"
+    show_when: { create_reverse_proxy: "true" }
     group: proxy
     group_label: "Create Reverse Proxy"
