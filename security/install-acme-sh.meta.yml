@@ -5,16 +5,29 @@ category: "Security"
 variables:
   domain:
     description: "FQDN for the certificate"
-    vm_default: fqdn
+    vm_field: fqdn
   email_address:
     description: "ACME account email address"
   dns_provider:
     description: "DNS provider for verification"
-    options: ["azure", "digitalocean"]
+    options:
+      - label: "Azure DNS"
+        value: "azure"
+      - label: "DigitalOcean"
+        value: "digitalocean"
     default: "azure"
   install_target:
     description: "Where to install certs"
-    options: ["nginx", "gitlab", "general"]
+    options:
+      - label: "Nginx"
+        value: "nginx"
+        path: "/etc/nginx/ssl/<domain>"
+      - label: "GitLab"
+        value: "gitlab"
+        path: "/etc/gitlab/ssl"
+      - label: "General"
+        value: "general"
+        path: "/etc/ssl/<domain>"
     default: "general"
   issue_wildcard:
     description: "Also issue wildcard certificate (*.domain)"
@@ -32,31 +45,30 @@ variables:
     default: "false"
   azure_subscription:
     description: "Azure Subscription ID"
-    json_group: azure_spn
+    group: azure_spn
+    group_label: "Azure Service Principal"
     json_key: subscriptionId
-    show_when: { dns_provider: "azure" }
     default: ""
   azure_tenant:
     description: "Azure AD Tenant ID"
-    json_group: azure_spn
+    group: azure_spn
+    group_label: "Azure Service Principal"
     json_key: tenantId
-    show_when: { dns_provider: "azure" }
     default: ""
   azure_client_id:
     description: "Azure SPN Client ID"
-    json_group: azure_spn
+    group: azure_spn
+    group_label: "Azure Service Principal"
     json_key: clientId
-    show_when: { dns_provider: "azure" }
     default: ""
   azure_secret:
     description: "Azure SPN Client Secret"
     secret: true
-    json_group: azure_spn
+    group: azure_spn
+    group_label: "Azure Service Principal"
     json_key: clientSecret
-    show_when: { dns_provider: "azure" }
     default: ""
   do_api_key:
     description: "DigitalOcean API token"
     secret: true
-    show_when: { dns_provider: "digitalocean" }
     default: ""
