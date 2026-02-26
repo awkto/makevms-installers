@@ -1,6 +1,6 @@
-name: "Install Docker"
+name: "Docker"
 description: "Install Docker Engine, Docker CLI, and Docker Compose plugin"
-category: "Basics"
+category: "Services"
 
 variables:
   docker_user:

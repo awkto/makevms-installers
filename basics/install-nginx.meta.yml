@@ -1,6 +1,6 @@
-name: "Install Nginx"
+name: "Nginx Reverse Proxy"
 description: "Install Nginx web server with optional reverse proxy endpoint"
-category: "Basics"
+category: "Services"
 
 variables:
   create_reverse_proxy:

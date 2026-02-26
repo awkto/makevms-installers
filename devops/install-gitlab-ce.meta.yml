@@ -1,6 +1,6 @@
 name: "Install GitLab"
 description: "Install GitLab Community or Enterprise Edition with optional SMTP configuration"
-category: "DevOps"
+category: "Software"
 
 variables:
   gitlab_edition:

@@ -1,6 +1,6 @@
 name: "Install OpenBao"
 description: "Install OpenBao secrets manager with persistent file storage, web UI, and auto-unseal on reboot"
-category: "DevOps"
+category: "Software"
 
 variables:
   openbao_version:

@@ -1,6 +1,6 @@
-name: "Issue SSL Certificate"
+name: "ACME.sh Certs"
 description: "Install acme.sh and issue Let's Encrypt certificates via DNS verification (Azure or DigitalOcean)"
-category: "Security"
+category: "Services"
 
 variables:
   domain:
