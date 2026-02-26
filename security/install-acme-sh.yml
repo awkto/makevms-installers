@@ -13,7 +13,7 @@
     _install_paths:
       nginx:
         cert_dir: "/etc/nginx/ssl/{{ domain }}"
-        reload_cmd: "nginx -t && systemctl reload nginx"
+        reload_cmd: "if systemctl is-active --quiet nginx 2>/dev/null; then nginx -t && systemctl reload nginx; fi"
       gitlab:
         cert_dir: "/etc/gitlab/ssl"
         reload_cmd: "gitlab-ctl hup nginx"
@@ -77,21 +77,6 @@
       changed_when: "'Cert success' in cert_result_do.stdout"
       failed_when: cert_result_do.rc != 0 and 'Domains not changed' not in cert_result_do.stdout
       when: dns_provider == "digitalocean"
-
-    # ── Nginx: ensure installed and running ───────────────────────────
-    - name: Install nginx
-      apt:
-        name: nginx
-        state: present
-        update_cache: yes
-      when: install_target == "nginx"
-
-    - name: Enable and start nginx
-      systemd:
-        name: nginx
-        enabled: yes
-        state: started
-      when: install_target == "nginx"
 
     # ── Install certificate ───────────────────────────────────────────
     - name: Create certificate directory
