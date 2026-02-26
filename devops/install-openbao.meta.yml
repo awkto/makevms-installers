@@ -9,3 +9,7 @@ variables:
   openbao_listen_address:
     description: "Address and port for OpenBao to listen on"
     default: "0.0.0.0:8200"
+  dev_mode:
+    description: "Dev mode — stores unseal key on disk and auto-unseals on every reboot. Disable for production (manual unseal required after restart)."
+    type: boolean
+    default: "true"
